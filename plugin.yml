@@ -1,0 +1,11 @@
+name: SnowballFight
+main: SnowballFight\Main
+version: 0.1.0
+api: 2.0.0
+author: chell_uoxou
+authors: [chell_uoxou]
+description: Snowball Fight PVP System for MCPE
+commands:
+ sbf:
+  usage: sbf < start | end | time | addpl | join | cancel >
+  permission: "sb.command"
