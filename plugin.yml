@@ -5,6 +5,7 @@ api: 2.0.0
 author: chell_uoxou
 authors: [chell_uoxou]
 description: Snowball Fight PVP System for MCPE
+websites: https://github.com/chell-uoxou/SnowballFight
 commands:
  sbf:
   usage: sbf < start | end | time | addpl | join | cancel >
