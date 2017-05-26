@@ -74,22 +74,41 @@ class Main extends PluginBase implements Listener
         if (isset($args[0])){
             switch (strtolower($args[0])) {
                 case "start":
-                    $this->start();
-                    return true;
+                    if (!$sender->isOp()){
+                        $sender->sendMessage("§cYou don't have permission to use this command.");
+                    }else{
+                        $this->start();
+                        return true;
+                    }
                     break;
 
                 case "end":
-                    $this->end();
+                    if (!$sender->isOp()){
+                        $sender->sendMessage("§cYou don't have permission to use this command.");
+                    }else{
+                        $this->end();
+                        return true;
+                    }
                     return true;
                     break;
 
                 case "time":
-                    $this->start();
+                    if (!$sender->isOp()){
+                        $sender->sendMessage("§cYou don't have permission to use this command.");
+                    }else{
+
+                        return true;
+                    }
                     return true;
                     break;
 
-                case "addpl":
-                    $this->start();
+                case "add":
+                    if (!$sender->isOp()){
+                        $sender->sendMessage("§cYou don't have permission to use this command.");
+                    }else{
+                        $this->end();
+                        return true;
+                    }
                     return true;
                     break;
 
