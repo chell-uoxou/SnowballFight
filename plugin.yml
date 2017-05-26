@@ -8,5 +8,4 @@ description: Snowball Fight PVP System for MCPE
 websites: https://github.com/chell-uoxou/SnowballFight
 commands:
  sbf:
-  usage: sbf < start | end | time | add | join | cancel >
-  permission: "sb.command"
+  usage: sbf < join | cancel | start | end | add | edit >

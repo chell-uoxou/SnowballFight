@@ -14,13 +14,15 @@ use pocketmine\event\player\PlayerQuitEvent;
 use pocketmine\utils\Config;
 use pocketmine\command\Command;
 use pocketmine\command\CommandSender;
+use pocketmine\level\Position;
 use pocketmine\math\Vector3;
 use SnowballFight\TeamManager;
 
 class Main extends PluginBase implements Listener
 {
-    private $teamManager;
 
+    private $config;
+    private $configPath;
     public $participatingPlayers;
 
     public $teams = array(
@@ -71,41 +73,41 @@ class Main extends PluginBase implements Listener
 
     public function onCommand(CommandSender $sender, Command $command, $label, array $args)
     {
-        if (isset($args[0])){
+        if (isset($args[0])) {
             switch (strtolower($args[0])) {
                 case "start":
-                    if (!$sender->isOp()){
+                    if (!$sender->isOp()) {
                         $sender->sendMessage("§cYou don't have permission to use this command.");
-                    }else{
-                        $this->start();
-                        return true;
+                    } else {
+                        $this->gameStart();
                     }
+                    return true;
                     break;
 
                 case "end":
-                    if (!$sender->isOp()){
+                    if (!$sender->isOp()) {
                         $sender->sendMessage("§cYou don't have permission to use this command.");
-                    }else{
+                    } else {
                         $this->end();
                         return true;
                     }
                     return true;
                     break;
 
-                case "time":
-                    if (!$sender->isOp()){
+                case "edit":
+                    if (!$sender->isOp()) {
                         $sender->sendMessage("§cYou don't have permission to use this command.");
-                    }else{
-
+                    } else {
+                        $this->editSettings($args, $sender);
                         return true;
                     }
                     return true;
                     break;
 
                 case "add":
-                    if (!$sender->isOp()){
+                    if (!$sender->isOp()) {
                         $sender->sendMessage("§cYou don't have permission to use this command.");
-                    }else{
+                    } else {
                         $this->end();
                         return true;
                     }
@@ -113,51 +115,141 @@ class Main extends PluginBase implements Listener
                     break;
 
                 case "join":
-                    if ($sender instanceof Player){
-                        if (!$this->getTeamIdFromPlayer($sender)){
+                    if ($sender instanceof Player) {
+                        if (!$this->getTeamIdFromPlayer($sender)) {
                             $team = $this->add($sender);
-                            if($team){
+                            if ($team) {
                                 $teamName = $this->getTeamDisplayName($team);
                                 $sender->sendMessage("§fあなたは{$teamName}チーム§fです！");
                             }
-                        }else{
+                        } else {
                             $teamName = $this->getTeamDisplayName($this->getTeamIdFromPlayer($sender));
                             $sender->sendMessage("§fあなたは既に{$teamName}チーム§fに所属しています！");
                         }
-                    }else{
+                    } else {
                         $sender->sendMessage("§cPlease run this command in-game.");
                     }
                     return true;
                     break;
 
                 case "cancel":
-                    $team = $this->getTeamIdFromPlayer($sender);
-                    if ($team){
-                        $this->delPlayerFromTeam($sender);
-                        $teamName = $this->getTeamDisplayName($team);
-                        $sender->sendMessage("{$teamName}チーム§fへの参加をキャンセルしました。");
-                    }else{
-                        $sender->sendMessage("あなたはどこのチームにも所属していません！");
+                    if ($sender instanceof Player) {
+                        $team = $this->getTeamIdFromPlayer($sender);
+                        if ($team) {
+                            $this->delPlayerFromTeam($sender);
+                            $teamName = $this->getTeamDisplayName($team);
+                            $sender->sendMessage("{$teamName}チーム§fへの参加をキャンセルしました。");
+                        } else {
+                            $sender->sendMessage("あなたはどこのチームにも所属していません！");
+                        }
+                    } else {
+                        $sender->sendMessage("§cPlease run this command in-game.");
                     }
                     return true;
                     break;
                 default:
                     return false;
             }
-        }else{
+        } else {
             return false;
         }
     }
 
-    private function start()
-    {
-        $this->getServer()->broadcastMessage('開始！');
+    private function onStruck($player){
+
     }
 
-    private function end(){
+    private function editSettings($args, $sender)
+    {
+        switch (strtolower($args[1])) {
+            case "pos1":
+                if ($sender instanceof Player) {
+                    $result = $this->setPosition("pos1", $sender);
+                    $sender->sendMessage("TeamID:1 のプレーヤースポーン地点を X:" . $result->getX() . ", Y:" . $result->getY() . ", Z:" . $result->getZ() . " に設定しました。");
+                } else {
+                    $sender->sendMessage("§cPlease run this command in-game.");
+                }
+                break;
+
+            case "pos2":
+                if ($sender instanceof Player) {
+                    $result = $this->setPosition("pos2", $sender);
+                    $sender->sendMessage("TeamID:2 のプレーヤースポーン地点を X:" . $result->getX() . ", Y:" . $result->getY() . ", Z:" . $result->getZ() . " に設定しました。");
+                } else {
+                    $sender->sendMessage("§cPlease run this command in-game.");
+                }
+                break;
+
+            default:
+                $sender->sendMessage("Usage: /sbf edit < pos1 | pos2 >");
+        }
+    }
+
+    private function setPosition($object, $player)
+    {
+        switch ($object) {
+            case "pos1":
+                $startPosition1 = new Position($player->getX(), $player->getY(), $player->getZ(), $player->getLevel());
+                $this->getConfig()->set("startPoint_1", array(
+                    'world' => $startPosition1->getLevel()->getName(),
+                    'x' => $startPosition1->getFloorX(),
+                    'y' => $startPosition1->getFloorY(),
+                    'z' => $startPosition1->getFloorZ()
+                ));
+                $this->getConfig()->save();
+                return $startPosition1;
+                break;
+
+            case "pos2":
+                $startPosition2 = new Position($player->getX(), $player->getY(), $player->getZ(), $player->getLevel());
+                $this->getConfig()->set("startPoint_2", array(
+                    'world' => $startPosition2->getLevel()->getName(),
+                    'x' => $startPosition2->getFloorX(),
+                    'y' => $startPosition2->getFloorY(),
+                    'z' => $startPosition2->getFloorZ()
+                ));
+                $this->getConfig()->save();
+                return $startPosition2;
+                break;
+
+        }
+    }
+
+    private function gameStart()
+    {
+        foreach ($this->participatingPlayers as $p) {
+            $teamName = $this->getTeamDisplayName($this->getTeamIdFromPlayer($p));
+            $this->teleportToEachSpawn($p);
+            $p->sendTitle("ゲームスタート！", "§fあなたは{$teamName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
+        }
+    }
+
+    private function teleportToEachSpawn($player)
+    {
+        $team = $this->getTeamIdFromPlayer($player);
+        switch ($team){
+            case 1:
+                $data = $this->getConfig()->get("startPoint_1");
+                $pos = new Vector3($data["x"], $data["y"], $data["z"]);
+                break;
+            case 2:
+                $data = $this->getConfig()->get("startPoint_2");
+                $pos = new Vector3($data["x"], $data["y"], $data["z"]);
+                break;
+            default:
+                $pos = $player->getLevel()->getSpawnLocation();
+                break;
+        }
+        $player->teleport($pos);
+    }
+
+    private function end()
+    {
         $winnerTeam = "red";
         foreach ($this->participatingPlayers as $p) {
-            $p->sendTitle($winnerTeam . "チームの勝利！", "0:0", $fadein = 20, $duration = 5, $fadeout = 20);
+            $p->sendTitle($winnerTeam . "チームの勝利！", "0:0", $fadein = 10, $duration = 3, $fadeout = 60);
+            $pos = $p->getLevel()->getSpawnLocation();
+            $p->teleport($pos);
         }
 
         foreach ($this->teams as $team) {
@@ -167,7 +259,8 @@ class Main extends PluginBase implements Listener
         $this->organizeArrays();
     }
 
-    private function add($player){
+    private function add($player)
+    {
         $team = $this->chooseTeamToJoin();
         $this->addPlayerToTeam($player, $team);
         return $team;
@@ -179,7 +272,7 @@ class Main extends PluginBase implements Listener
         $this->participatingPlayers = array();
         foreach ($this->teams as $team) {
             foreach ($team["players"] as $player)
-            $this->participatingPlayers[] = $player;
+                $this->participatingPlayers[] = $player;
         }
     }
 
@@ -219,14 +312,16 @@ class Main extends PluginBase implements Listener
         return count($this->teams);
     }
 
-    public function addPlayerToTeam($player, $teamId){
+    public function addPlayerToTeam($player, $teamId)
+    {
         $this->teams[$this->getTeamName($teamId)]["players"][] = $player;
         $this->organizeArrays();
     }
 
-    public function delPlayerFromTeam($player){
+    public function delPlayerFromTeam($player)
+    {
         $teamId = $this->getTeamIdFromPlayer($player);
-        $arrayNum = array_search($player,$this->teams[$this->getTeamName($teamId)]["players"]);
+        $arrayNum = array_search($player, $this->teams[$this->getTeamName($teamId)]["players"]);
         unset($this->teams[$this->getTeamName($teamId)]["players"][$arrayNum]);
         $this->organizeArrays();
     }
