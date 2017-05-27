@@ -69,6 +69,8 @@ class Main extends PluginBase implements Listener
                     'z' => null
                 )
             ));
+
+        $this->organizeArrays();
     }
 
     public function onCommand(CommandSender $sender, Command $command, $label, array $args)
@@ -120,11 +122,17 @@ class Main extends PluginBase implements Listener
                             $team = $this->add($sender);
                             if ($team) {
                                 $teamName = $this->getTeamDisplayName($team);
-                                $sender->sendMessage("§fあなたは{$teamName}チーム§fです！");
+                                if ($this->isPlaying($team)) {
+                                    $teamName = $this->getTeamDisplayName($this->getTeamIdFromPlayer($sender));
+                                    $this->teleportToEachSpawn($sender);
+                                    $sender->sendTitle("ゲームスタート！", "§fあなたは{$teamName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
+                                } else {
+                                    $sender->sendMessage("§fあなたは{$teamName}チーム§fです！\nゲーム開始までしばらくお待ちください！");
+                                }
                             }
                         } else {
                             $teamName = $this->getTeamDisplayName($this->getTeamIdFromPlayer($sender));
-                            $sender->sendMessage("§fあなたは既に{$teamName}チーム§fに所属しています！");
+                            $sender->sendMessage("§fあなたは既に{$teamName}チーム§fに所属しています！\nゲーム開始までしばらくお待ちください！");
                         }
                     } else {
                         $sender->sendMessage("§cPlease run this command in-game.");
@@ -155,7 +163,8 @@ class Main extends PluginBase implements Listener
         }
     }
 
-    private function onStruck($player){
+    private function onStruck($player)
+    {
 
     }
 
@@ -222,12 +231,16 @@ class Main extends PluginBase implements Listener
             $this->teleportToEachSpawn($p);
             $p->sendTitle("ゲームスタート！", "§fあなたは{$teamName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
         }
+        foreach ($this->teams as $team) {
+            $teamId = $team["id"];
+            $this->setTeamData($teamId, "isPlaying", true);
+        }
     }
 
     private function teleportToEachSpawn($player)
     {
         $team = $this->getTeamIdFromPlayer($player);
-        switch ($team){
+        switch ($team) {
             case 1:
                 $data = $this->getConfig()->get("startPoint_1");
                 $pos = new Vector3($data["x"], $data["y"], $data["z"]);
@@ -251,36 +264,65 @@ class Main extends PluginBase implements Listener
             $pos = $p->getLevel()->getSpawnLocation();
             $p->teleport($pos);
         }
-
-        foreach ($this->teams as $team) {
-            $key = $team["name"];
-            $this->teams[$key]["players"] = array();
-        }
+        $this->initTeamData();
+        //echo "262\n";
+        //var_dump($this->teams);
         $this->organizeArrays();
     }
 
     private function add($player)
     {
         $team = $this->chooseTeamToJoin();
+        //echo "chosenTeamId:$team\n";
         $this->addPlayerToTeam($player, $team);
+        $this->organizeArrays();
         return $team;
     }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private function organizeArrays()
     {
         $this->participatingPlayers = array();
         foreach ($this->teams as $team) {
-            foreach ($team["players"] as $player)
+            $unique = array_unique($team["players"]);
+            $team["players"] = array_values($unique);
+
+            foreach ($team["players"] as $player) {
                 $this->participatingPlayers[] = $player;
+            }
         }
     }
 
-    private function getTeamData($id, $column)
+    private function initTeamData()
+    {
+        $this->teams = array(
+            "Red" => array(
+                "name" => "Red",
+                "displayName" => "§c赤",
+                "id" => 1,
+                "players" => array(),
+                "isPlaying" => false,
+                "isWinner" => false
+            ),
+            "Blue" => array(
+                "name" => "Blue",
+                "displayName" => "§b青",
+                "id" => 2,
+                "players" => array(),
+                "isPlaying" => false,
+                "isWinner" => false
+            ),
+        );
+    }
+
+    private function getTeamData($id, $key)
     {
         foreach ($this->teams as $team) {
+            //echo "312\n";
+            //var_dump($team);
             if ($team["id"] == $id) {
-                $data = $team[$column];
+                $data = $team[$key];
                 break;
             }
         }
@@ -291,6 +333,15 @@ class Main extends PluginBase implements Listener
         }
     }
 
+    private function setTeamData($id, $key, $value)
+    {
+        foreach ($this->teams as $name => $team) {
+            if ($team["id"] == $id) {
+                $this->teams[$name][$key] = $value;
+                break;
+            }
+        }
+    }
 
     public function getTeamName($id)
     {
@@ -314,7 +365,10 @@ class Main extends PluginBase implements Listener
 
     public function addPlayerToTeam($player, $teamId)
     {
+        //echo "teamid:$teamId\n";
         $this->teams[$this->getTeamName($teamId)]["players"][] = $player;
+        //echo "349\n";
+        //var_dump($this->teams);
         $this->organizeArrays();
     }
 
@@ -333,6 +387,8 @@ class Main extends PluginBase implements Listener
         }
         foreach ($this->teams as $team) {
             if (in_array($player, $team["players"])) {
+                //echo "368\n";
+                //var_dump($this->teams);
                 $teamId = $team["id"];
                 break;
             }
@@ -344,33 +400,37 @@ class Main extends PluginBase implements Listener
         }
     }
 
+    public function isPlaying($teamOrPlayer)
+    {
+        if ($teamOrPlayer instanceof Player) {
+            $team = $this->getTeamIdFromPlayer($teamOrPlayer);
+        } else {
+            $team = $teamOrPlayer;
+        }
+        return $this->getTeamData($team, "isPlaying");
+    }
+
     public function chooseTeamToJoin()
     {
         $pc1 = $this->getTeamPlayersCount(1);
         $pc2 = $this->getTeamPlayersCount(2);
-
-        switch (true) {
-            case $pc1 == $pc2:
-                return rand(1, 2);
-                break;
-
-            case $pc1 > $pc2:
-                return 2;
-                break;
-
-            case $pc2 < $pc1:
-                return 1;
-                break;
-
-            default:
-                return false;
+        //echo("pc1:$pc1, pc2:$pc2\n");
+        if ($pc1 == $pc2) {
+            return rand(1, 2);
         }
-
+        if ($pc1 > $pc2) {
+            return (int)2;
+        }
+        if ($pc1 < $pc2) {
+            return (int)1;
+        }
     }
 
     public function PlayerQuit(PlayerQuitEvent $event)
     {
         $player = $event->getPlayer();
-        $this->delPlayerFromTeam($player);
+        if ($this->getTeamIdFromPlayer($player)) {
+            $this->delPlayerFromTeam($player);
+        }
     }
 }
