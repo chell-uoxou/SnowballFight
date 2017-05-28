@@ -69,7 +69,7 @@ class Main extends PluginBase implements Listener
     {
         $this->getServer()->getPluginManager()->registerEvents($this, $this);
         $this->getLogger()->info($this->getFullName() . " by chell_uoxou Loaded!");
-//        $this->getLogger()->info("§c二次配布は厳禁です！");
+        $this->getLogger()->info("§c二次配布は厳禁です！");
         if (!file_exists($this->getDataFolder())) {
             mkdir($this->getDataFolder(), 0744, true);
         }
