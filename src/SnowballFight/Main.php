@@ -7,12 +7,15 @@
  */
 namespace SnowballFight;
 
+
+use pocketmine\event\player\PlayerJoinEvent;
 use pocketmine\Player;
 
 use pocketmine\plugin\PluginBase;
 
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerQuitEvent;
+use pocketmine\event\entity\EntityDamageEvent;
 
 use pocketmine\utils\Config;
 
@@ -29,6 +32,8 @@ use pocketmine\nbt\NBT;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\IntTag;
 
+use pocketmine\entity\Snowball;
+
 class Main extends PluginBase implements Listener
 {
 
@@ -39,20 +44,26 @@ class Main extends PluginBase implements Listener
         "Red" => array(
             "name" => "Red",
             "displayName" => "§c赤",
+            "teamColor" => "§c",
             "id" => 1,
             "players" => array(),
+            "points" => 0,
             "isPlaying" => false,
             "isWinner" => false
         ),
         "Blue" => array(
             "name" => "Blue",
             "displayName" => "§b青",
+            "teamColor" => "§b",
             "id" => 2,
             "players" => array(),
+            "points" => 0,
             "isPlaying" => false,
             "isWinner" => false
         ),
     );
+
+    public $prifks = "§a[§dSBF§a]§f";
 
     function onEnable()
     {
@@ -64,23 +75,26 @@ class Main extends PluginBase implements Listener
         }
         $this->config = new Config($this->getDataFolder() . "config.yml", Config::YAML,
             array(
-                'time' => 60,
+                'Prifks' => "SBF",
+                'Time' => 60,
                 'MinNumOfPeople' => 2,
                 'MaxNumOfPeople' => 10,
-                'startPoint_1' => array(
+                'StartPoint_1' => array(
                     'world' => null,
                     'x' => null,
                     'y' => null,
                     'z' => null
                 ),
-                'startPoint_2' => array(
+                'StartPoint_2' => array(
                     'world' => null,
                     'x' => null,
                     'y' => null,
                     'z' => null
-                )
+                ),
+                'AllowStatusCommand' => false
             ));
-
+        $getPrifks = $this->config->get("Prifks");
+        $this->prifks = "§a[§d{$getPrifks}§a]§f";
         $this->organizeArrays();
     }
 
@@ -90,12 +104,12 @@ class Main extends PluginBase implements Listener
             switch (strtolower($args[0])) {
                 case "start":
                     if (!$sender->isOp()) {
-                        $sender->sendMessage("§cYou don't have permission to use this command.");
+                        $sender->sendMessage($this->prifks . "§cYou don't have permission to use this command.");
                     } else {
                         if ($this->getConfig()->get("MinNumOfPeople") <= count($this->participatingPlayers)) {
                             $this->gameStart();
                         } else {
-                            $sender->sendMessage("§cゲーム開始に必要な参加者最少人数を満たしていないため、ゲームが開始できませんでした。");
+                            $sender->sendMessage($this->prifks . "§cゲーム開始に必要な参加者最少人数を満たしていないため、ゲームが開始できませんでした。");
                         }
                     }
                     return true;
@@ -103,12 +117,12 @@ class Main extends PluginBase implements Listener
 
                 case "end":
                     if (!$sender->isOp()) {
-                        $sender->sendMessage("§cYou don't have permission to use this command.");
+                        $sender->sendMessage($this->prifks . "§cYou don't have permission to use this command.");
                     } else {
                         if ($this->isPlaying(1) or $this->isPlaying(2)) {
                             $this->end();
                         } else {
-                            $sender->sendMessage("§c現在、進行中のゲームはありません。");
+                            $sender->sendMessage($this->prifks . "§c現在、進行中のゲームはありません。");
                         }
                         return true;
                     }
@@ -117,7 +131,7 @@ class Main extends PluginBase implements Listener
 
                 case "edit":
                     if (!$sender->isOp()) {
-                        $sender->sendMessage("§cYou don't have permission to use this command.");
+                        $sender->sendMessage($this->prifks . "§cYou don't have permission to use this command.");
                     } else {
                         $this->editSettings($args, $sender);
                         return true;
@@ -127,7 +141,7 @@ class Main extends PluginBase implements Listener
 
                 case "add":
                     if (!$sender->isOp()) {
-                        $sender->sendMessage("§cYou don't have permission to use this command.");
+                        $sender->sendMessage($this->prifks . "§cYou don't have permission to use this command.");
                     } else {
                         $this->end();
                         return true;
@@ -136,7 +150,15 @@ class Main extends PluginBase implements Listener
                     break;
 
                 case "status":
-                    $this->answerStatus($args, $sender);
+                    if (!$sender->isOp()) {
+                        if ($this->getConfig()->get("AllowStatusCommand")) {
+                            $this->answerStatus($args, $sender);
+                        } else {
+                            $sender->sendMessage($this->prifks . "§cYou don't have permission to use this command.");
+                        }
+                    } else {
+                        $this->answerStatus($args, $sender);
+                    }
                     return true;
                     break;
 
@@ -147,19 +169,17 @@ class Main extends PluginBase implements Listener
                             if ($team) {
                                 $teamName = $this->getTeamDisplayName($team);
                                 if ($this->isPlaying($team)) {
-                                    $teamName = $this->getTeamDisplayName($this->getTeamIdFromPlayer($sender));
-                                    $this->teleportToEachSpawn($sender);
-                                    $sender->sendTitle("ゲームスタート！", "§fあなたは{$teamName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
+                                    $this->joinGame($sender);
                                 } else {
-                                    $sender->sendMessage("§fあなたは{$teamName}チーム§fです！\n§eゲーム開始までしばらくお待ちください！");
+                                    $sender->sendMessage($this->prifks . "§fあなたは{$teamName}チーム§fです！\n§eゲーム開始までしばらくお待ちください！");
                                 }
                             }
                         } else {
                             $teamName = $this->getTeamDisplayName($this->getTeamIdFromPlayer($sender));
-                            $sender->sendMessage("§fあなたは既に{$teamName}チーム§fに所属しています！\n§eゲーム開始までしばらくお待ちください！");
+                            $sender->sendMessage($this->prifks . "§fあなたは既に{$teamName}チーム§fに所属しています！\n§eゲーム開始までしばらくお待ちください！");
                         }
                     } else {
-                        $sender->sendMessage("§cPlease run this command in-game.");
+                        $sender->sendMessage($this->prifks . "§cPlease run this command in-game.");
                     }
                     return true;
                     break;
@@ -170,12 +190,12 @@ class Main extends PluginBase implements Listener
                         if ($team) {
                             $this->delPlayerFromTeam($sender);
                             $teamName = $this->getTeamDisplayName($team);
-                            $sender->sendMessage("{$teamName}チーム§fへの参加をキャンセルしました。");
+                            $sender->sendMessage($this->prifks . "{$teamName}チーム§fへの参加をキャンセルしました。");
                         } else {
-                            $sender->sendMessage("§cあなたはどこのチームにも所属していません！");
+                            $sender->sendMessage($this->prifks . "§cあなたはどこのチームにも所属していません！");
                         }
                     } else {
-                        $sender->sendMessage("§cPlease run this command in-game.");
+                        $sender->sendMessage($this->prifks . "§cPlease run this command in-game.");
                     }
                     return true;
                     break;
@@ -185,11 +205,6 @@ class Main extends PluginBase implements Listener
         } else {
             return false;
         }
-    }
-
-    private function onStruck($player)
-    {
-
     }
 
     private function answerStatus($args, $sender)
@@ -260,27 +275,31 @@ class Main extends PluginBase implements Listener
 
     private function editSettings($args, $sender)
     {
-        switch (strtolower($args[1])) {
-            case "pos1":
-                if ($sender instanceof Player) {
-                    $result = $this->setPosition("pos1", $sender);
-                    $sender->sendMessage("TeamID:1 のプレーヤースポーン地点を X:" . $result->getX() . ", Y:" . $result->getY() . ", Z:" . $result->getZ() . " に設定しました。");
-                } else {
-                    $sender->sendMessage("§cPlease run this command in-game.");
-                }
-                break;
+        if (isset($args[1])) {
+            switch (strtolower($args[1])) {
+                case "pos1":
+                    if ($sender instanceof Player) {
+                        $result = $this->setPosition("pos1", $sender);
+                        $sender->sendMessage($this->prifks . "TeamID:1 のプレーヤースポーン地点を X:" . $result->getX() . ", Y:" . $result->getY() . ", Z:" . $result->getZ() . " に設定しました。");
+                    } else {
+                        $sender->sendMessage($this->prifks . "§cPlease run this command in-game.");
+                    }
+                    break;
 
-            case "pos2":
-                if ($sender instanceof Player) {
-                    $result = $this->setPosition("pos2", $sender);
-                    $sender->sendMessage("TeamID:2 のプレーヤースポーン地点を X:" . $result->getX() . ", Y:" . $result->getY() . ", Z:" . $result->getZ() . " に設定しました。");
-                } else {
-                    $sender->sendMessage("§cPlease run this command in-game.");
-                }
-                break;
+                case "pos2":
+                    if ($sender instanceof Player) {
+                        $result = $this->setPosition("pos2", $sender);
+                        $sender->sendMessage($this->prifks . "TeamID:2 のプレーヤースポーン地点を X:" . $result->getX() . ", Y:" . $result->getY() . ", Z:" . $result->getZ() . " に設定しました。");
+                    } else {
+                        $sender->sendMessage($this->prifks . "§cPlease run this command in-game.");
+                    }
+                    break;
 
-            default:
-                $sender->sendMessage("Usage: /sbf edit < pos1 | pos2 >");
+                default:
+                    $sender->sendMessage("Usage: /sbf edit < pos1 | pos2 >");
+            }
+        } else {
+            $sender->sendMessage("Usage: /sbf edit < pos1 | pos2 >");
         }
     }
 
@@ -289,7 +308,7 @@ class Main extends PluginBase implements Listener
         switch ($object) {
             case "pos1":
                 $startPosition1 = new Position($player->getX(), $player->getY(), $player->getZ(), $player->getLevel());
-                $this->getConfig()->set("startPoint_1", array(
+                $this->getConfig()->set("StartPoint_1", array(
                     'world' => $startPosition1->getLevel()->getName(),
                     'x' => $startPosition1->getFloorX(),
                     'y' => $startPosition1->getFloorY(),
@@ -301,7 +320,7 @@ class Main extends PluginBase implements Listener
 
             case "pos2":
                 $startPosition2 = new Position($player->getX(), $player->getY(), $player->getZ(), $player->getLevel());
-                $this->getConfig()->set("startPoint_2", array(
+                $this->getConfig()->set("StartPoint_2", array(
                     'world' => $startPosition2->getLevel()->getName(),
                     'x' => $startPosition2->getFloorX(),
                     'y' => $startPosition2->getFloorY(),
@@ -314,74 +333,6 @@ class Main extends PluginBase implements Listener
         }
     }
 
-    private function gameStart()
-    {
-        foreach ($this->participatingPlayers as $p) {
-            $teamId = $this->getTeamIdFromPlayer($p);
-            $teamName = $this->getTeamName($teamId);
-            $this->teleportToEachSpawn($p);
-            if ($p->getGamemode() != 1) {
-                $item = array(
-                    "snowball_16" => Item::get(332, 0, 16),
-                    "tunic" => Item::get(229, 0, 1)
-
-                );
-                $this->giveColorArmor($p, $item["tunic"], $teamName);
-                $p->getInventory()->clearAll();
-                $p->getInventory()->setItem(0, $item["snowball_16"]);
-                $p->getInventory()->setItem(1, $item["snowball_16"]);
-                $p->getInventory()->setItem(2, $item["snowball_16"]);
-                $p->getInventory()->setItem(3, $item["snowball_16"]);
-                $p->getInventory()->setItem(4, $item["snowball_16"]);
-            }
-            $p->sendTitle("ゲームスタート！", "§fあなたは{$teamName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
-        }
-        foreach ($this->teams as $team) {
-            $teamId = $team["id"];
-            $this->setTeamData($teamId, "isPlaying", true);
-        }
-        $this->organizeArrays();
-    }
-
-    private function teleportToEachSpawn($player)
-    {
-        $team = $this->getTeamIdFromPlayer($player);
-        switch ($team) {
-            case 1:
-                $data = $this->getConfig()->get("startPoint_1");
-                $pos = new Vector3($data["x"], $data["y"], $data["z"]);
-                break;
-            case 2:
-                $data = $this->getConfig()->get("startPoint_2");
-                $pos = new Vector3($data["x"], $data["y"], $data["z"]);
-                break;
-            default:
-                $pos = $player->getLevel()->getSpawnLocation();
-                break;
-        }
-        $player->teleport($pos);
-    }
-
-    private function end()
-    {
-        $winnerTeam = "red";
-        foreach ($this->participatingPlayers as $p) {
-            $p->sendTitle($winnerTeam . "チームの勝利！", "0:0", $fadein = 10, $duration = 3, $fadeout = 60);
-            $pos = $p->getLevel()->getSpawnLocation();
-            $p->teleport($pos);
-            if ($p->getGamemode() != 1) {
-                $p->getInventory()->clearAll();
-                $p->getInventory()->setArmorItem(1, Item::get(0, 0, 0));
-            }
-            $p->setNameTag($p->getName());
-            $p->setDisplayName($p->getName());
-        }
-        $this->initTeamData();
-        //echo "262\n";
-        //var_dump($this->teams);
-        $this->organizeArrays();
-    }
-
     private function add($player)
     {
         $team = $this->chooseTeamToJoin();
@@ -391,7 +342,191 @@ class Main extends PluginBase implements Listener
         return $team;
     }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    private function teleportToEachSpawn($player)
+    {
+        $team = $this->getTeamIdFromPlayer($player);
+        switch ($team) {
+            case 1:
+                $data = $this->getConfig()->get("StartPoint_1");
+                $level = $this->getServer()->getLevelByName($data["world"]);
+                $pos = new Position($data["x"], $data["y"], $data["z"], $level);
+                break;
+            case 2:
+                $data = $this->getConfig()->get("StartPoint_2");
+                $level = $this->getServer()->getLevelByName($data["world"]);
+                $pos = new Position($data["x"], $data["y"], $data["z"], $level);
+                break;
+            default:
+                $pos = $player->getLevel()->getSpawnLocation();
+                break;
+        }
+        $player->teleport($pos);
+    }
+
+///  Game  /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    public function gameStart()
+    {
+        foreach ($this->participatingPlayers as $p) {
+            $this->joinGame($p);
+        }
+        foreach ($this->teams as $team) {
+            $teamId = $team["id"];
+            $this->setTeamData($teamId, "isPlaying", true);
+        }
+        $this->organizeArrays();
+    }
+
+    private function joinGame($p)
+    {
+        $teamId = $this->getTeamIdFromPlayer($p);
+        $teamDisplayName = $this->getTeamDisplayName($teamId);
+        $playerName = $p->getName();
+        $this->teleportToEachSpawn($p);
+        if ($this->isPlaying($teamId)){
+            $this->sendMessageInGame($this->prifks . $playerName . "さんが{$teamName}としてゲームに参加しました！");
+        }
+        if ($p->getGamemode() != 1) {
+            $p->setGamemode(0);
+            $item = array(
+                "snowball_16" => Item::get(332, 0, 16),
+                "tunic" => Item::get(229, 0, 1)
+
+            );
+            $this->giveColorArmor($p, $item["tunic"], $teamName);
+            $p->getInventory()->clearAll();
+            $p->getInventory()->setItem(0, $item["snowball_16"]);
+            $p->getInventory()->setItem(1, $item["snowball_16"]);
+            $p->getInventory()->setItem(2, $item["snowball_16"]);
+            $p->getInventory()->setItem(3, $item["snowball_16"]);
+            $p->getInventory()->setItem(4, $item["snowball_16"]);
+        }
+        $p->sendTitle("ゲームスタート！", "§fあなたは{$teamName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
+    }
+
+    public function end($type = NULL)
+    {
+        $point1 = $this->getTeamPoint(1);
+        $point2 = $this->getTeamPoint(2);
+        switch (true) {
+            case $point1 > $point2:
+                $gameResult = $this->getTeamDisplayName(1) . "チームの勝利";
+                $winnerTeam = $this->getTeamDisplayName(1);
+                break;
+
+            case $point1 < $point2:
+                $gameResult = $this->getTeamDisplayName(2) . "チームの勝利";
+                $winnerTeam = $this->getTeamDisplayName(2);
+                break;
+
+            case $point1 == $point2:
+                if ($point1 = "" and $point2 = "") {
+                    $point1 = 0;
+                    $point2 = 0;
+                }
+                $gameResult = "§a引き分け";
+                break;
+        }
+        $winLoseRatio = $this->getTeamColor(1) . "$point1 §f: " . $this->getTeamColor(2) . "$point2 §f";
+
+        foreach ($this->participatingPlayers as $p) {
+            if (!isset($type)) {
+                $p->sendTitle($gameResult . "！", $winLoseRatio, $fadein = 10, $duration = 3, $fadeout = 60);
+                $this->getServer()->broadcastMessage($this->prifks . "§aゲーム終了、{$winLoseRatio}で{$gameResult}です。");
+            } else {
+                switch ($type) {
+                    case "too little":
+                        $p->sendTitle("§c対戦相手がいません！", $winLoseRatio . "で" . $gameResult . "§fです。", $fadein = 10, $duration = 3, $fadeout = 60);
+                        $this->getServer()->broadcastMessage($this->prifks . "§6ゲームの最小参加人数を下回ったためゲームを終了しました。");
+                        $this->getServer()->broadcastMessage($this->prifks . "終了段階の試合結果は、{$winLoseRatio}で{$gameResult}です。");
+                }
+            }
+            $pos = $p->getLevel()->getSpawnLocation();
+            $p->teleport($pos);
+            if ($p->getGamemode() != 1) {
+                $p->getInventory()->clearAll();
+                $p->getInventory()->setArmorItem(1, Item::get(0, 0, 0));
+            }
+            $p->setNameTag($p->getName());
+            $p->setDisplayName($p->getName());
+        }
+
+        if (!isset($type)) {
+            $this->getServer()->broadcastMessage($this->prifks . "§aゲーム終了、{$winLoseRatio}で{$gameResult}です。");
+        } else {
+            switch ($type) {
+                case "too little":
+                    $this->getServer()->broadcastMessage($this->prifks . "§6ゲームの最小参加人数を下回ったためゲームを終了しました。");
+                    $this->getServer()->broadcastMessage($this->prifks . "終了段階の試合結果は、{$winLoseRatio}で{$gameResult}です。");
+            }
+        }
+
+        $this->initTeamData();
+        //echo "262\n";
+        //var_dump($this->teams);
+        $this->organizeArrays();
+    }
+
+    public function EntityDamage(EntityDamageEvent $event)
+    {
+        $cause = $event->getCause();
+        if (method_exists($event, "getDamager")) {
+            $damager = $event->getDamager();
+            $damaged = $event->getEntity();
+            if ($cause == EntityDamageEvent::CAUSE_PROJECTILE and substr($event->getChild(), 0, 4) == "Snow") {
+                $damagerDisplayName = $damager->getNameTag();
+
+                if (!$this->isOnlinePlayer($damagerDisplayName)) {
+                    $damagerTTLonger = mb_strlen(preg_replace("/(.*)§f]§r(.*)/", '$1', $damagerDisplayName)) + 5;
+                    $damagerName = mb_substr($damagerDisplayName, $damagerTTLonger);
+                } else {
+                    $damagerName = $damagerDisplayName;
+                }
+                $damagedPlayerDisplayName = $damaged->getNameTag();
+                if (!$this->isOnlinePlayer($damagedPlayerDisplayName)) {
+                    $damagedPlayerTTLonger = mb_strlen(preg_replace("/(.*)§f]§r(.*)/", '$1', $damagedPlayerDisplayName)) + 5;
+                    $damagedPlayerName = mb_substr($damagedPlayerDisplayName, $damagedPlayerTTLonger);
+                } else {
+                    $damagedPlayerName = $damagedPlayerDisplayName;
+                }
+                $damagerPlayer = $this->getServer()->getPlayer($damagerName);
+                $damagedPlayer = $this->getServer()->getPlayer($damagedPlayerName);
+
+                $damagedTeam = $this->getTeamIdFromPlayer($damagedPlayer);
+                $damagerTeam = $this->getTeamIdFromPlayer($damagerPlayer);
+
+                if ($damagerTeam != $damagedTeam) {
+                    $this->addTeamPoint($damagerTeam, 1);
+
+                    $this->sendMessageInGame($this->prifks . "{$damagerDisplayName} §l->§r {$damagedPlayerDisplayName}");
+                    $this->teleportToEachSpawn($damagedPlayer);
+
+                    $damagerPlayer->sendTip("§a§lShot! >> {$damagedPlayerName}");
+                    $damagedPlayer->sendTip("§c§lDamaged! << {$damagerName}");
+                }
+            }
+        }
+    }
+
+    public function sendMessageInGame($message)
+    {
+        foreach ($this->participatingPlayers as $player) {
+            $player->sendMessage($message);
+        }
+    }
+
+    private function isOnlinePlayer($name)
+    {
+        $return = false;
+        foreach ($this->getServer()->getOnlinePlayers() as $player) {
+            if ($player->getName() == $name) {
+                $return = true;
+                break;
+            }
+        }
+        return $return;
+    }
+
+/// System /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private function organizeArrays()
     {
@@ -416,6 +551,9 @@ class Main extends PluginBase implements Listener
                 $player->setDisplayName($player->getName());
             }
         }
+        if ($this->isPlaying(1) and count($this->participatingPlayers) <= 1) {
+            $this->end("too little");
+        }
     }
 
     private function initTeamData()
@@ -424,16 +562,20 @@ class Main extends PluginBase implements Listener
             "Red" => array(
                 "name" => "Red",
                 "displayName" => "§c赤",
+                "teamColor" => "§c",
                 "id" => 1,
                 "players" => array(),
+                "points" => 0,
                 "isPlaying" => false,
                 "isWinner" => false
             ),
             "Blue" => array(
                 "name" => "Blue",
                 "displayName" => "§b青",
+                "teamColor" => "§b",
                 "id" => 2,
                 "players" => array(),
+                "points" => 0,
                 "isPlaying" => false,
                 "isWinner" => false
             ),
@@ -472,6 +614,12 @@ class Main extends PluginBase implements Listener
         return $this->getTeamData($id, "name");
     }
 
+    private function getTeamColor($id)
+    {
+        return $this->getTeamData($id, "teamColor");
+
+    }
+
     public function getTeamDisplayName($id)
     {
         return $this->getTeamData($id, "displayName");
@@ -485,6 +633,26 @@ class Main extends PluginBase implements Listener
     public function getTeamCount()
     {
         return count($this->teams);
+    }
+
+    public function getTeamPoint($id)
+    {
+        if (isset($this->teams[$this->getTeamName($id)]["points"])) {
+            return (int)$this->teams[$this->getTeamName($id)]["points"];
+        } else {
+            return false;
+        }
+    }
+
+    public function addTeamPoint($id, $point)
+    {
+        $teamName = $this->getTeamName($id);
+        if (isset($this->teams[$teamName]["points"])) {
+            $cuPoint = $this->teams[$teamName]["points"];
+            $this->teams[$teamName]["points"] = $cuPoint + $point;
+        } else {
+            return false;
+        }
     }
 
     public function addPlayerToTeam($player, $teamId)
@@ -547,6 +715,15 @@ class Main extends PluginBase implements Listener
         }
         if ($pc1 < $pc2) {
             return (int)1;
+        }
+    }
+
+    public function PlayerJoin(PlayerJoinEvent $event)
+    {
+        $player = $event->getPlayer();
+        if (!$player->isOp()) {
+            $player->getInventory()->clearAll();
+            $player->setGamemode(2);
         }
     }
 
