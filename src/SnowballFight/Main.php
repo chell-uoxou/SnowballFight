@@ -380,6 +380,7 @@ class Main extends PluginBase implements Listener
     {
         $teamId = $this->getTeamIdFromPlayer($p);
         $teamDisplayName = $this->getTeamDisplayName($teamId);
+        $teamName = $this->getTeamName($teamId);
         $playerName = $p->getName();
         $this->teleportToEachSpawn($p);
         if ($this->isPlaying($teamId)){
@@ -431,13 +432,10 @@ class Main extends PluginBase implements Listener
         foreach ($this->participatingPlayers as $p) {
             if (!isset($type)) {
                 $p->sendTitle($gameResult . "！", $winLoseRatio, $fadein = 10, $duration = 3, $fadeout = 60);
-                $this->getServer()->broadcastMessage($this->prifks . "§aゲーム終了、{$winLoseRatio}で{$gameResult}です。");
             } else {
                 switch ($type) {
                     case "too little":
                         $p->sendTitle("§c対戦相手がいません！", $winLoseRatio . "で" . $gameResult . "§fです。", $fadein = 10, $duration = 3, $fadeout = 60);
-                        $this->getServer()->broadcastMessage($this->prifks . "§6ゲームの最小参加人数を下回ったためゲームを終了しました。");
-                        $this->getServer()->broadcastMessage($this->prifks . "終了段階の試合結果は、{$winLoseRatio}で{$gameResult}です。");
                 }
             }
             $pos = $p->getLevel()->getSpawnLocation();
