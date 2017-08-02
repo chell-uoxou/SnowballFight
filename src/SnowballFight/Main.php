@@ -53,6 +53,7 @@ class Main extends PluginBase implements Listener
 {
 
     private $config;
+    private $playersData;
     public $participatingPlayers;
 
     public $teams = array(
@@ -102,27 +103,11 @@ class Main extends PluginBase implements Listener
         if (!file_exists($this->getDataFolder())) {
             mkdir($this->getDataFolder(), 0744, true);
         }
-        $this->config = new Config($this->getDataFolder() . "config.yml", Config::YAML,
-            array(
-                'Prifks' => "SBF",
-                'Interval' => 600,
-                'WaitInterval' => 10,
-                'MinNumOfPeople' => 2,
-                'MaxNumOfPeople' => 10,
-                'StartPoint_1' => array(
-                    'world' => null,
-                    'x' => null,
-                    'y' => null,
-                    'z' => null
-                ),
-                'StartPoint_2' => array(
-                    'world' => null,
-                    'x' => null,
-                    'y' => null,
-                    'z' => null
-                ),
-                'AllowStatusCommand' => false
-            ));
+        $this->saveDefaultConfig();
+        $this->reloadConfig();
+        $this->config = new Config($this->getDataFolder() . "config.yml", Config::YAML);
+        $this->playersData = new Config($this->getDataFolder() . "players.json", Config::JSON);
+        
         $getPrifks = $this->config->get("Prifks");
         $this->prifks = "§a[§d{$getPrifks}§a]§f";
         $this->organizeArrays();
@@ -933,6 +918,8 @@ class Main extends PluginBase implements Listener
         }
     }
 
+    //Scheduler/////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     public function gameStartWait()
     {
         $waitSeconds = $this->getConfig()->get("WaitInterval");
@@ -1039,7 +1026,7 @@ class Main extends PluginBase implements Listener
         API::setTitle("§l残り時間\n\n§l§6[" . $hms . "]", $this->eid, $this->participatingPlayers);
     }
 
-    //From API/////////////////////////////////////////////////////////////////////////////////////////////////////////
+    //From API//////////////////////////////////////////////////////////////////////////////////////////////////////////
     /* Quotes from CreateColorArmor_v1.0.1 by vardo@お鳥さん
      * website : https://forum.pmmp.jp/threads/697/
      * Thanks to the auther.
