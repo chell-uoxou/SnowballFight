@@ -16,6 +16,7 @@ use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerQuitEvent;
 use pocketmine\event\player\PlayerJoinEvent;
 use pocketmine\event\entity\EntityDamageEvent;
+use pocketmine\event\player\PlayerChatEvent;
 
 use pocketmine\scheduler\CallbackTask;
 
@@ -107,9 +108,9 @@ class Main extends PluginBase implements Listener
         $this->reloadConfig();
         $this->config = new Config($this->getDataFolder() . "config.yml", Config::YAML);
         $this->playersData = new Config($this->getDataFolder() . "players.json", Config::JSON);
-        
+
         $getPrifks = $this->config->get("Prifks");
-        $this->prifks = "§a[§d{$getPrifks}§a]§f";
+        $this->prifks = "§a[§d{$getPrifks}§a]§f ";
         $this->organizeArrays();
         $this->gameStartWait();
         $this->onTickedSeconds();
@@ -212,8 +213,8 @@ class Main extends PluginBase implements Listener
                                 $teamName = $this->getTeamDisplayName($team);
                                 if ($this->isPlaying($team)) {
                                     $this->joinGame($sender);
-                                    $playerName = $sender->getDisplayName();
-                                    $this->sendMessageInGame($this->prifks . "§a{$playerName}§aさんがゲームに参加しました。");
+                                    $playerName = $sender->getName();
+                                    $this->sendMessageInGame($this->prifks . "§a{$playerName}§aさんが{$teamName}チームに参加しました。");
                                 } else {
                                     $sender->sendMessage($this->prifks . "§fあなたは{$teamName}チーム§fです！\n§eゲーム開始までしばらくお待ちください！");
                                 }
@@ -505,24 +506,26 @@ class Main extends PluginBase implements Listener
 
     private function joinGame($p)
     {
-        $teamId = $this->getTeamIdFromPlayer($p);
-        $teamDisplayName = $this->getTeamDisplayName($teamId);
-        $teamName = $this->getTeamName($teamId);
-        $playerName = $p->getName();
-        $this->teleportToEachSpawn($p);
-        if ($this->isPlaying($teamId)) {
-            $this->sendMessageInGame($this->prifks . $playerName . "さんが{$teamDisplayName}としてゲームに参加しました！");
+        if ($p instanceof Player){
+            $teamId = $this->getTeamIdFromPlayer($p);
+            $teamDisplayName = $this->getTeamDisplayName($teamId);
+            $teamName = $this->getTeamName($teamId);
+            $playerName = $p->getName();
+            $this->teleportToEachSpawn($p);
+            if ($this->isPlaying($teamId)) {
+                $this->sendMessageInGame($this->prifks . $playerName . "さんが{$teamDisplayName}としてゲームに参加しました！");
+            }
+            if ($p->getGamemode() != 1) {
+                $p->setGamemode(2);
+                $item = array(
+                    "snowball_16" => Item::get(332, 0, 16),
+                    "tunic" => Item::get(229, 0, 1)
+                );
+                $this->giveColorArmor($p, $item["tunic"], $teamName);
+                $this->refillItems($p);
+            }
+            $p->addTitle("ゲームスタート！", "§fあなたは{$teamDisplayName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
         }
-        if ($p->getGamemode() != 1) {
-            $p->setGamemode(2);
-            $item = array(
-                "snowball_16" => Item::get(332, 0, 16),
-                "tunic" => Item::get(229, 0, 1)
-            );
-            $this->giveColorArmor($p, $item["tunic"], $teamName);
-            $this->refillItems($p);
-        }
-        $p->addTitle("ゲームスタート！", "§fあなたは{$teamDisplayName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
     }
 
     public function end($type = NULL)
@@ -681,6 +684,21 @@ class Main extends PluginBase implements Listener
     {
         foreach ($this->participatingPlayers as $player) {
             $player->sendMessage($message);
+        }
+    }
+
+    public function sendMessageInTeam($message, $team, $toPlaying = false){
+        if ($toPlaying){
+            $players = $this->participatingPlayers;
+        }else{
+            $players = $this->getServer()->getOnlinePlayers();
+        }
+
+        foreach ($players as $player){
+            $playerName = $player->getName();
+            if ($this->getTeamName($this->getTeamIdFromPlayer($playerName)) == $team){
+                $player->sendMessage($message);
+            }
         }
     }
 
@@ -918,6 +936,28 @@ class Main extends PluginBase implements Listener
         }
     }
 
+    //Chat//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    function onChat(PlayerChatEvent $e){
+        $message = $e->getMessage();
+        $player = $e->getPlayer();
+        $e->setCancelled();
+        $playerName = $player->getName();
+        $teamId = $this->getTeamIdFromPlayer($player);
+        $team = $this->getTeamName($teamId);
+        if ($teamId){
+            if ($message[0] != "!" and $message[0] != "！"){
+                $this->sendMessageInTeam($this->getTeamColor($teamId) . "　[team]$playerName §r>> §l" . $message,$team);
+                $this->getLogger()->info($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message,$team);
+            }else{
+                $message = substr($message, 1);
+                $this->getServer()->broadcastMessage("　§6[chat]§r$playerName >> §l" . $message);
+            }
+        }else{
+            $this->getServer()->broadcastMessage("　§6[chat]§r$playerName >> §l" . $message);
+        }
+    }
+
     //Scheduler/////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     public function gameStartWait()
@@ -1029,7 +1069,7 @@ class Main extends PluginBase implements Listener
     //From API//////////////////////////////////////////////////////////////////////////////////////////////////////////
     /* Quotes from CreateColorArmor_v1.0.1 by vardo@お鳥さん
      * website : https://forum.pmmp.jp/threads/697/
-     * Thanks to the auther.
+     * Thanks to the author.
      */
     public function giveColorArmor(Player $player, Item $item, String $colonm)
     {
