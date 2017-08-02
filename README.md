@@ -5,6 +5,7 @@
 >* [どう使うねん、、](#howToUseThisShit)
 >   * [導入方法](#howToInstallThisShit)
 >   * [コマンドリスト](#shittyCommandsList)
+>   * [configの対応値](#config.ini)
 
 ## <a name="whatIsThisShit">Snowball Fightってなんやねん
 その名の通り、雪合戦です。
@@ -38,7 +39,7 @@
 
 ### <a name="config.ini">configの対応値
 | 値 | 説明 |
-|:-----------|------------:|
+|-----------:|:------------|
 | `Prifks:` | 雪合戦プラグインが出力する先頭文字 |
 | `Interval:` | 試合開始から試合終了までの時間 |
 | `WaitInterval:` | ロビーで参加待機中の間隔 |
