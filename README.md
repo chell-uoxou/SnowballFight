@@ -38,11 +38,11 @@
 * `/sbf edit pos2` : 自分の立ってる場所をTeamID 2（デフォルトでBlue）のスポーン地点に設定します。
 
 ### <a name="config.ini">configの対応値
-| 値 | 説明 |
-|-----------:|:------------|
-| `Prifks:` | 雪合戦プラグインが出力する先頭文字 |
-| `Interval:` | 試合開始から試合終了までの時間 |
-| `WaitInterval:` | ロビーで参加待機中の間隔 |
-| `MinNumOfPeople:` | 試合開始可能になる最少人数 |
-| `MaxNumOfPeople:` | 試合に参加できるの最大人数 |
-| `AllowStatusCommand:` | `/status`コマンドをOP以外に使用可能させるか |
+| 値 | 説明 | デフォルト |
+|:-----------:|:------------|:----|
+| `Prifks:` | 雪合戦プラグインが出力する先頭文字 | SBF |
+| `Interval:` | 試合開始から試合終了までの時間 | 600 |
+| `WaitInterval:` | ロビーで参加待機中の間隔 | 10 |
+| `MinNumOfPeople:` | 試合開始可能になる最少人数 | 2 |
+| `MaxNumOfPeople:` | 試合に参加できるの最大人数 | 50 |
+| `AllowStatusCommand:` | `/status`コマンドをOP以外に使用可能させるか | false |
