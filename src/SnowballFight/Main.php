@@ -947,14 +947,14 @@ class Main extends PluginBase implements Listener
         $team = $this->getTeamName($teamId);
         if ($teamId){
             if ($message[0] != "!" and $message[0] != "！"){
-                $this->sendMessageInTeam($this->getTeamColor($teamId) . "　[team]$playerName §r>> §l" . $message,$team);
-                $this->getLogger()->info($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message,$team);
+                $this->sendMessageInTeam($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　",$team);
+                $this->getLogger()->info($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　",$team);
             }else{
                 $message = substr($message, 1);
-                $this->getServer()->broadcastMessage("　§6[chat]§r$playerName >> §l" . $message);
+                $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
             }
         }else{
-            $this->getServer()->broadcastMessage("　§6[chat]§r$playerName >> §l" . $message);
+            $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
         }
     }
 
