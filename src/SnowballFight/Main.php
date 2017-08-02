@@ -8,15 +8,13 @@
 namespace SnowballFight;
 
 
-use pocketmine\event\player\PlayerJoinEvent;
-use pocketmine\level\sound\AnvilFallSound;
-use pocketmine\level\sound\PopSound;
 use pocketmine\Player;
 
 use pocketmine\plugin\PluginBase;
 
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerQuitEvent;
+use pocketmine\event\player\PlayerJoinEvent;
 use pocketmine\event\entity\EntityDamageEvent;
 
 use pocketmine\scheduler\CallbackTask;
@@ -30,6 +28,8 @@ use pocketmine\item\Item;
 
 use pocketmine\level\Position;
 use pocketmine\level\sound\NoteblockSound; //無理やってん。音でぇへんかってん。つらい。
+use pocketmine\level\sound\AnvilFallSound;
+use pocketmine\level\sound\PopSound;
 
 use pocketmine\math\Vector3;
 
@@ -37,7 +37,17 @@ use pocketmine\nbt\NBT;
 use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\IntTag;
 
+use pocketmine\network\protocol\AddEntityPacket;
+use pocketmine\network\protocol\MoveEntityPacket;
+
+use pocketmine\entity\Entity;
 use pocketmine\entity\Snowball;
+
+use SnowBallFight\BossEventPacket;
+
+//Please Install This API Plugin.
+
+use xenialdan\BossBarAPI\API;
 
 class Main extends PluginBase implements Listener
 {
@@ -73,6 +83,17 @@ class Main extends PluginBase implements Listener
     private $s_countDownSeconds = 5;//don't change it!
     private $e_countDownSeconds = 5;//don't change it!
 
+    private $gameRemainingSeconds;
+
+    public $eid = null;
+
+    private $tasks = array(
+        "gameWillStartInFiveSeconds" => null,
+        "gameStartWait" => null,
+        "gameWillEndInFiveSeconds" => null,
+    );
+
+
     function onEnable()
     {
         $this->getServer()->getPluginManager()->registerEvents($this, $this);
@@ -84,7 +105,8 @@ class Main extends PluginBase implements Listener
         $this->config = new Config($this->getDataFolder() . "config.yml", Config::YAML,
             array(
                 'Prifks' => "SBF",
-                'Interval' => 60,
+                'Interval' => 600,
+                'WaitInterval' => 10,
                 'MinNumOfPeople' => 2,
                 'MaxNumOfPeople' => 10,
                 'StartPoint_1' => array(
@@ -104,7 +126,10 @@ class Main extends PluginBase implements Listener
         $getPrifks = $this->config->get("Prifks");
         $this->prifks = "§a[§d{$getPrifks}§a]§f";
         $this->organizeArrays();
-        $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameStartWait"]), 20 * 15);
+        $this->gameStartWait();
+        $this->onTickedSeconds();
+        $this->getServer()->getScheduler()->scheduleRepeatingTask(new SendTask($this), 20);
+        $this->getServer()->getScheduler()->scheduleRepeatingTask(new CallbackTask([$this, "onTickedSeconds"]), 20);
     }
 
     public function onCommand(CommandSender $sender, Command $command, $label, array $args)
@@ -201,8 +226,9 @@ class Main extends PluginBase implements Listener
                             if ($team) {
                                 $teamName = $this->getTeamDisplayName($team);
                                 if ($this->isPlaying($team)) {
-                                    $sender->sendMessage($this->prifks . "進行中のゲームに５秒後に参加します！");
-                                    $task = new joinCountDown($this, $sender, 5);
+                                    $this->joinGame($sender);
+                                    $playerName = $sender->getDisplayName();
+                                    $this->sendMessageInGame($this->prifks . "§a{$playerName}§aさんがゲームに参加しました。");
                                 } else {
                                     $sender->sendMessage($this->prifks . "§fあなたは{$teamName}チーム§fです！\n§eゲーム開始までしばらくお待ちください！");
                                 }
@@ -439,7 +465,13 @@ class Main extends PluginBase implements Listener
                 $pos = $player->getLevel()->getSpawnLocation();
                 break;
         }
+        if ($this->eid !== null) {
+            API::removeBossBar([$player], $this->eid);
+        }
         $player->teleport($pos);
+        if ($this->eid !== null) {
+            API::sendBossBarToPlayer($player, $this->eid, '残り時間');
+        }
     }
 
 ///  Game  /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -447,11 +479,20 @@ class Main extends PluginBase implements Listener
     {
         $this->getServer()->broadcastMessage($this->prifks . "ゲームを開始しました。");
 
+        $this->gameRemainingSeconds = $this->getConfig()->get("Interval");
+
         $this->cancelAllTasks();
-        $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameWillEndInFiveSeconds"]), 20 * $this->getConfig()->get("Interval"));
+        $this->tasks["gameWillEndInFiveSeconds"] = $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameWillEndInFiveSeconds"]), 20 * ($this->getConfig()->get("Interval") - 5));
 
         foreach ($this->participatingPlayers as $p) {
             $this->joinGame($p);
+        }
+        if ($this->eid === null) {
+            $this->eid = API::addBossBar($this->participatingPlayers, '残り時間');
+        } else {
+            foreach ($this->participatingPlayers as $p) {
+                API::sendBossBarToPlayer($p, $this->eid, '残り時間');
+            }
         }
         foreach ($this->teams as $team) {
             $teamId = $team["id"];
@@ -496,12 +537,14 @@ class Main extends PluginBase implements Listener
             $this->giveColorArmor($p, $item["tunic"], $teamName);
             $this->refillItems($p);
         }
-        $p->sendTitle("ゲームスタート！", "§fあなたは{$teamDisplayName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
+        $p->addTitle("ゲームスタート！", "§fあなたは{$teamDisplayName}チーム§fです！", $fadein = 0, $duration = 2, $fadeout = 20);
     }
 
     public function end($type = NULL)
     {
         $this->cancelAllTasks();
+
+        API::removeBossBar($this->getServer()->getOnlinePlayers(), $this->eid);
 
         $point1 = $this->getTeamPoint(1);
         $point2 = $this->getTeamPoint(2);
@@ -530,14 +573,14 @@ class Main extends PluginBase implements Listener
 
         foreach ($this->participatingPlayers as $p) {
             if (!isset($type)) {
-                $p->sendTitle($gameResult . "！", $winLoseRatio, 10, 3, 60);
+                $p->addTitle($gameResult . "！", $winLoseRatio, 10, 3, 60);
             } else {
                 switch ($type) {
                     case "too little":
-                        $p->sendTitle("§c対戦相手がいません！", $winLoseRatio . "で" . $gameResult . "§fです。", 10, 3, 60);
+                        $p->addTitle("§c対戦相手がいません！", $winLoseRatio . "で" . $gameResult . "§fです。", 10, 3, 60);
                         break;
                     case "big deviation":
-                        $p->sendTitle("§c人数差が発生しました！", $winLoseRatio . "で" . $gameResult . "§fです。", 10, 3, 60);
+                        $p->addTitle("§c人数差が発生しました！", $winLoseRatio . "で" . $gameResult . "§fです。", 10, 3, 60);
                         break;
                 }
             }
@@ -568,12 +611,15 @@ class Main extends PluginBase implements Listener
         }
 
         $this->initTeamData();
-        $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameStartWait"]), 20 * 15);
+
+        $this->gameRemainingSeconds = $this->getConfig()->get("Interval");
+
+        $this->tasks["gameStartWait"] = $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameStartWait"]), 20 * 15);
 
         $this->organizeArrays();
     }
 
-    public function EntityDamage(EntityDamageEvent $event)
+    public function onEntityDamage(EntityDamageEvent $event)
     {
         $cause = $event->getCause();
         if (method_exists($event, "getDamager")) {
@@ -644,7 +690,7 @@ class Main extends PluginBase implements Listener
 //
 //        }
 //
-//    }
+//    }//玉の自動補充 破損してる
 
     public function sendMessageInGame($message)
     {
@@ -870,7 +916,7 @@ class Main extends PluginBase implements Listener
         }
     }
 
-    public function PlayerJoin(PlayerJoinEvent $event)
+    public function onPlayerJoin(PlayerJoinEvent $event)
     {
         $player = $event->getPlayer();
         if (!$player->isOp()) {
@@ -879,7 +925,7 @@ class Main extends PluginBase implements Listener
         }
     }
 
-    public function PlayerQuit(PlayerQuitEvent $event)
+    public function onPlayerQuit(PlayerQuitEvent $event)
     {
         $player = $event->getPlayer();
         if ($this->getTeamIdFromPlayer($player)) {
@@ -889,13 +935,14 @@ class Main extends PluginBase implements Listener
 
     public function gameStartWait()
     {
+        $waitSeconds = $this->getConfig()->get("WaitInterval");
         if ($this->getConfig()->get("MinNumOfPeople") <= count($this->participatingPlayers)) {
             $this->cancelAllTasks();
-            $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameWillStartInFiveSeconds"]), 20 * 15);
+            $this->tasks["gameWillStartInFiveSeconds"] = $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameWillStartInFiveSeconds"]), 20 * $waitSeconds);
         } else {
-            $this->getLogger()->info("Scheduler >> 参加人数不足。15秒後に再試行...");
+//            $this->getLogger()->info("Scheduler >> 参加人数不足。{$waitSeconds}秒後に再試行...");
             $this->cancelAllTasks();
-            $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameStartWait"]), 20 * 15);
+            $this->tasks["gameStartWait"] = $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameStartWait"]), 20 * 15);
         }
     }
 
@@ -922,7 +969,7 @@ class Main extends PluginBase implements Listener
             }
             $this->getLogger()->info("Scheduler >> $this->s_countDownSeconds");
             $this->s_countDownSeconds--;
-            $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameWillStartInFiveSeconds"]), 20);
+            $this->tasks["gameWillStartInFiveSeconds"] = $this->getServer()->getScheduler()->scheduleDelayedTask(new CallbackTask([$this, "gameWillStartInFiveSeconds"]), 20);
         }
     }
 
@@ -955,8 +1002,41 @@ class Main extends PluginBase implements Listener
 
     private function cancelAllTasks()
     {
-        $this->getServer()->getScheduler()->cancelTasks($this);
-        $this->getLogger()->info("scheduler >> All tasks of [Snow Ball Fight] were canceled.");
+        foreach ($this->tasks as $key => $task) {
+            if (method_exists($task, "cancel")) {
+                $task->cancel();
+//                echo $key . "  ";
+            }
+        }
+//        $this->getLogger()->notice("Scheduler >> All tasks of [Snow Ball Fight] were canceled.");
+    }
+
+    private function cancelTask($taskID)
+    {
+        $this->getServer()->getScheduler()->cancelTask($taskID);
+    }
+
+    public function onTickedSeconds()
+    {
+        if ($this->isPlaying(1)){
+            $this->getLogger()->info($this->gameRemainingSeconds);
+            $this->sendBossBar();
+            $this->gameRemainingSeconds--;
+        }
+    }
+
+    public function sendBossBar()
+    {
+        if ($this->eid === null) return;
+        $maxTimeLimit = $this->getConfig()->get("Interval");
+        $current = $this->gameRemainingSeconds;
+        $percentage = $current / $maxTimeLimit * 100;
+        API::setPercentage($percentage, $this->eid, $this->participatingPlayers);
+
+        $minutes = floor(($current / 60) % 60);
+        $seconds = $current % 60;
+        $hms = sprintf("%02d:%02d", $minutes, $seconds);
+        API::setTitle("§l残り時間\n\n§l§6[" . $hms . "]", $this->eid, $this->participatingPlayers);
     }
 
     //From API/////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1016,7 +1096,7 @@ class Main extends PluginBase implements Listener
         }
     }
 
-    public function getColorByName(String $name)
+    private function getColorByName(String $name)
     {
         $colornm = strtoupper($name);
         switch ($colornm) {

@@ -2,6 +2,6 @@
 
 # IntelliJ project files
 .idea
-config.yml
 .gitignore
-config.json
+/config.yml
+/players.json
