@@ -480,6 +480,7 @@ class Main extends PluginBase implements Listener
                 API::sendBossBarToPlayer($p, $this->eid, '残り時間');
             }
         }
+
         foreach ($this->teams as $team) {
             $teamId = $team["id"];
             $this->setTeamData($teamId, "isPlaying", true);
@@ -607,7 +608,7 @@ class Main extends PluginBase implements Listener
         $this->organizeArrays();
     }
 
-    public function onEntityDamage(EntityDamageEvent $event)
+    public function attacked(EntityDamageEvent $event)
     {
         $cause = $event->getCause();
         if (method_exists($event, "getDamager")) {
@@ -618,15 +619,15 @@ class Main extends PluginBase implements Listener
                     $damagerDisplayName = $damager->getNameTag();
 
                     if (!$this->isOnlinePlayer($damagerDisplayName)) {
-                        $damagerTTLonger = mb_strlen(preg_replace("/(.*)§f]§r(.*)/", '$1', $damagerDisplayName)) + 5;
-                        $damagerName = mb_substr($damagerDisplayName, $damagerTTLonger);
+                        $damagerTTLength = mb_strlen(preg_replace("/(.*)§f]§r(.*)/", '$1', $damagerDisplayName)) + 5;
+                        $damagerName = mb_substr($damagerDisplayName, $damagerTTLength);
                     } else {
                         $damagerName = $damagerDisplayName;
                     }
                     $damagedPlayerDisplayName = $damaged->getNameTag();
                     if (!$this->isOnlinePlayer($damagedPlayerDisplayName)) {
-                        $damagedPlayerTTLonger = mb_strlen(preg_replace("/(.*)§f]§r(.*)/", '$1', $damagedPlayerDisplayName)) + 5;
-                        $damagedPlayerName = mb_substr($damagedPlayerDisplayName, $damagedPlayerTTLonger);
+                        $damagedPlayerTTLength = mb_strlen(preg_replace("/(.*)§f]§r(.*)/", '$1', $damagedPlayerDisplayName)) + 5;
+                        $damagedPlayerName = mb_substr($damagedPlayerDisplayName, $damagedPlayerTTLength);
                     } else {
                         $damagedPlayerName = $damagedPlayerDisplayName;
                     }
@@ -655,8 +656,8 @@ class Main extends PluginBase implements Listener
 //        $entity = $event->getEntity();
 //        $launcherDisplayName = $entity->getNameTag();
 //        if (!$this->isOnlinePlayer($launcherDisplayName)) {
-//            $launcherTTLonger = mb_strlen(preg_replace("/(.*)§f]§r(.*)/", '$1', $launcherDisplayName)) + 5;
-//            $launcherName = mb_substr($launcherDisplayName, $launcherTTLonger);
+//            $launcherTTLength = mb_strlen(preg_replace("/(.*)§f]§r(.*)/", '$1', $launcherDisplayName)) + 5;
+//            $launcherName = mb_substr($launcherDisplayName, $launcherTTLength);
 //        } else {
 //            $launcherName = $launcherDisplayName;
 //        }
@@ -946,12 +947,22 @@ class Main extends PluginBase implements Listener
         $teamId = $this->getTeamIdFromPlayer($player);
         $team = $this->getTeamName($teamId);
         if ($teamId){
-            if ($message[0] != "!" and $message[0] != "！"){
-                $this->sendMessageInTeam($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　",$team);
-                $this->getLogger()->info($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　",$team);
+            if ($this->config->get("ChatInTeam") == true){
+                if ($message[0] != "!" and $message[0] != "！"){
+                    $this->sendMessageInTeam($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　",$team);
+                    $this->getLogger()->info($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　");
+                }else{
+                    $message = substr($message, 1);
+                    $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
+                }
             }else{
-                $message = substr($message, 1);
-                $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
+                if ($message[0] == "!" or $message[0] == "！"){
+                    $message = substr($message, 1);
+                    $this->sendMessageInTeam($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　",$team);
+                    $this->getLogger()->info($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　");
+                }else{
+                    $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
+                }
             }
         }else{
             $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
@@ -1043,7 +1054,7 @@ class Main extends PluginBase implements Listener
         $this->getServer()->getScheduler()->cancelTask($taskID);
     }
 
-    public function onTickedSeconds()
+    public function onTickedSecond()
     {
         if ($this->isPlaying(1)){
             $this->getLogger()->info($this->gameRemainingSeconds);
