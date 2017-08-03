@@ -15,4 +15,5 @@ StartPoint_2:
   "y": ~
   z: ~
 AllowStatusCommand: false
+ChatInTeam: false
 ...
