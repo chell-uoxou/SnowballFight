@@ -16,4 +16,5 @@ StartPoint_2:
   z: ~
 AllowStatusCommand: false
 ChatInTeam: false
+DoSendBossBer: true
 ...

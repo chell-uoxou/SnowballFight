@@ -46,13 +46,10 @@ use pocketmine\entity\Snowball;
 
 use SnowBallFight\BossEventPacket;
 
-//Please Install This API Plugin.
-
 use xenialdan\BossBarAPI\API;
 
 class Main extends PluginBase implements Listener
 {
-
     private $config;
     private $playersData;
     public $participatingPlayers;
@@ -95,14 +92,20 @@ class Main extends PluginBase implements Listener
         "gameWillEndInFiveSeconds" => null,
     );
 
+    const DO_SEND_BOSSBAR = false;
+    const DO_RESET_INVENTORY = false;
+
 
     function onEnable()
     {
         $this->getServer()->getPluginManager()->registerEvents($this, $this);
-        $this->getLogger()->info($this->getFullName() . " by chell_uoxou Loaded!");
-        $this->getLogger()->info("§c二次配布は厳禁です！");
+        $messages[] = ("§7Created by §dchell_uoxou §8(@chell_uoxou).");
+        $messages[] = ("§c§l二次配布は厳禁です！");
+        $messages[] = ("§7アップデートの確認はこちらから：§8https://github.com/chell-uoxou/SnowballFight");
+
         if (!file_exists($this->getDataFolder())) {
             mkdir($this->getDataFolder(), 0744, true);
+            $message[] = ("[NOTICE]§aデータ保管用のフォルダを作成しました。");
         }
         $this->saveDefaultConfig();
         $this->reloadConfig();
@@ -111,14 +114,70 @@ class Main extends PluginBase implements Listener
 
         $getPrifks = $this->config->get("Prifks");
         $this->prifks = "§a[§d{$getPrifks}§a]§f ";
+        $messages[] = ("[STATUS]プラグインメッセージ接頭語：" . $this->prifks);
+        $messages[] = ("[STATUS]試合時間：§e" . $this->config->get("Interval") . "秒");
+        $messages[] = ("[STATUS]試合開始確認間隔：§e" . $this->config->get("Interval") . "秒");
+        $messages[] = ("[STATUS]必要最小人数：§e" . $this->config->get("MinNumOfPeople") . "人");
+        $messages[] = ("[STATUS]参加可能最大人数：§e" . $this->config->get("MaxNumOfPeople") . "人");
+
         $this->organizeArrays();
         $this->gameStartWait();
-        $this->onTickedSeconds();
         $this->getServer()->getScheduler()->scheduleRepeatingTask(new SendTask($this), 20);
-        $this->getServer()->getScheduler()->scheduleRepeatingTask(new CallbackTask([$this, "onTickedSeconds"]), 20);
+        $this->getServer()->getScheduler()->scheduleRepeatingTask(new CallbackTask([$this, "onTickedSecond"]), 20);
+
+        if ($this->config->get("DoSendBossBer") == true) {
+            if (!$this->getServer()->getPluginManager()->getPlugin("BossBarAPI")) {
+                $messages[] = ("§6[WARNING]BossBarAPIプラグインが見つかりませんでした。");
+                $messages[] = ("[STATUS]ウィザーバーの表示：§c無効");
+                define('SnowballFight\DO_SEND_BOSSBAR', false);
+            } else {
+                define('SnowballFight\DO_SEND_BOSSBAR', true);
+                $messages[] = ("[STATUS]ウィザーバーの表示；§a有効");
+                $messages[] = ("[NOTICE]§6ウィザーバーのシステムは実験的なものです。");
+                $messages[] = ("[NOTICE]§6不具合が生じた場合はconfig.ymlのDoSendBossBerの値をfalseに変更してください。");
+            }
+        } else {
+            define('SnowballFight\DO_SEND_BOSSBAR', false);
+            $messages[] = ("[STATUS]ウィザーバーの表示：§c無効");
+        }
+
+        if ($this->config->get("StartPoint_1")["x"] === null or $this->config->get("StartPoint_2")["x"] === null) {
+            $messages[] = ("[NOTICE]§l§cチームのスポーン地点が未設定です。");
+            $messages[] = ("[NOTICE]§6/sbf edit <pos1|pos2> にて、必ず設定してください。");
+        }
+
+        if ($this->config->get("DoResetInventory") == true) {
+            $messages[] = ("[STATUS]インベントリリセット：§c有効");
+            $messages[] = ("[NOTICE]§l§cワールドに入室したサバイバルモードのプレイヤーの持ち物がリセットされます。");
+        } else {
+            $messages[] = ("[STATUS]インベントリリセット：§c無効");
+        }
+
+        if ($this->config->get("DoResetInventory") == true) {
+            $messages[] = ("[STATUS]インベントリリセット：§c有効");
+            $messages[] = ("[NOTICE]§l§cワールドに入室したサバイバルモードのプレイヤーの持ち物がリセットされます。");
+        } else {
+            $messages[] = ("[STATUS]インベントリリセット：§c無効");
+        }
+
+        $longerLength = 0;
+        foreach ($messages as $message) {
+            $length = strlen(preg_replace('/§./', "", $message)) - (strlen(preg_replace('/§./', "", $message)) - mb_strlen(preg_replace('/§./', "", $message))) / 2;
+            if ($longerLength < $length) {
+                $longerLength = $length;
+            }
+        }
+
+        $first_line_length = strlen("=====: " . $this->getFullName() . " :=====");
+        $this->getLogger()->info("+ §l=====:§a " . $this->getFullName() . " §f:=====" . str_repeat("=", $longerLength - $first_line_length) . " +");
+        foreach ($messages as $message) {
+            $spaces = $longerLength - strlen(preg_replace('/§./', "", $message)) + (strlen(preg_replace('/§./', "", $message)) - mb_strlen(preg_replace('/§./', "", $message))) / 2 + 1;
+            $this->getLogger()->info("| " . $message . str_repeat(" ", $spaces) . "§f|");
+        }
+        $this->getLogger()->info("+ " . str_repeat("=", $longerLength) . " +");
     }
 
-    public function onCommand(CommandSender $sender, Command $command, $label, array $args)
+    public function onCommand(CommandSender $sender, Command $command,string $label, array $args):bool
     {
         if (isset($args[0])) {
             switch (strtolower($args[0])) {
@@ -451,11 +510,11 @@ class Main extends PluginBase implements Listener
                 $pos = $player->getLevel()->getSpawnLocation();
                 break;
         }
-        if ($this->eid !== null) {
+        if ($this->eid !== null and self::DO_SEND_BOSSBAR == true) {
             API::removeBossBar([$player], $this->eid);
         }
         $player->teleport($pos);
-        if ($this->eid !== null) {
+        if ($this->eid !== null and self::DO_SEND_BOSSBAR == true) {
             API::sendBossBarToPlayer($player, $this->eid, '残り時間');
         }
     }
@@ -473,11 +532,13 @@ class Main extends PluginBase implements Listener
         foreach ($this->participatingPlayers as $p) {
             $this->joinGame($p);
         }
-        if ($this->eid === null) {
-            $this->eid = API::addBossBar($this->participatingPlayers, '残り時間');
-        } else {
-            foreach ($this->participatingPlayers as $p) {
-                API::sendBossBarToPlayer($p, $this->eid, '残り時間');
+        if (self::DO_SEND_BOSSBAR == true) {
+            if ($this->eid === null) {
+                $this->eid = API::addBossBar($this->participatingPlayers, '残り時間');
+            } else {
+                foreach ($this->participatingPlayers as $p) {
+                    API::sendBossBarToPlayer($p, $this->eid, '残り時間');
+                }
             }
         }
 
@@ -507,7 +568,7 @@ class Main extends PluginBase implements Listener
 
     private function joinGame($p)
     {
-        if ($p instanceof Player){
+        if ($p instanceof Player) {
             $teamId = $this->getTeamIdFromPlayer($p);
             $teamDisplayName = $this->getTeamDisplayName($teamId);
             $teamName = $this->getTeamName($teamId);
@@ -533,7 +594,9 @@ class Main extends PluginBase implements Listener
     {
         $this->cancelAllTasks();
 
-        API::removeBossBar($this->getServer()->getOnlinePlayers(), $this->eid);
+        if (self::DO_SEND_BOSSBAR == true) {
+            API::removeBossBar($this->getServer()->getOnlinePlayers(), $this->eid);
+        }
 
         $point1 = $this->getTeamPoint(1);
         $point2 = $this->getTeamPoint(2);
@@ -613,7 +676,7 @@ class Main extends PluginBase implements Listener
         $cause = $event->getCause();
         if (method_exists($event, "getDamager")) {
             $damager = $event->getDamager();
-            $damaged = $event->getEntity();
+            $damaged = $event->getEntity();////////
             if ($this->isPlaying($damager) and $this->isPlaying($damaged)) {
                 if ($cause == EntityDamageEvent::CAUSE_PROJECTILE and substr($event->getChild(), 0, 4) == "Snow") {
                     $damagerDisplayName = $damager->getNameTag();
@@ -688,16 +751,17 @@ class Main extends PluginBase implements Listener
         }
     }
 
-    public function sendMessageInTeam($message, $team, $toPlaying = false){
-        if ($toPlaying){
+    public function sendMessageInTeam($message, $team, $toPlaying = false)
+    {
+        if ($toPlaying) {
             $players = $this->participatingPlayers;
-        }else{
+        } else {
             $players = $this->getServer()->getOnlinePlayers();
         }
 
-        foreach ($players as $player){
+        foreach ($players as $player) {
             $playerName = $player->getName();
-            if ($this->getTeamName($this->getTeamIdFromPlayer($playerName)) == $team){
+            if ($this->getTeamName($this->getTeamIdFromPlayer($playerName)) == $team) {
                 $player->sendMessage($message);
             }
         }
@@ -927,6 +991,13 @@ class Main extends PluginBase implements Listener
             $player->getInventory()->clearAll();
             $player->setGamemode(2);
         }
+        $playerName = $player->getName();
+        $this->playersData->set($playerName, array(
+            "kill" => 0,
+            "points" => 0,
+            "killer" => array(),
+            "killed" => array()
+        ));
     }
 
     public function onPlayerQuit(PlayerQuitEvent $event)
@@ -937,34 +1008,37 @@ class Main extends PluginBase implements Listener
         }
     }
 
+    //Score/////////////////////////////////////////////////////////////
+
     //Chat//////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    function onChat(PlayerChatEvent $e){
+    function onChat(PlayerChatEvent $e)
+    {
         $message = $e->getMessage();
         $player = $e->getPlayer();
         $e->setCancelled();
         $playerName = $player->getName();
         $teamId = $this->getTeamIdFromPlayer($player);
         $team = $this->getTeamName($teamId);
-        if ($teamId){
-            if ($this->config->get("ChatInTeam") == true){
-                if ($message[0] != "!" and $message[0] != "！"){
-                    $this->sendMessageInTeam($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　",$team);
+        if ($teamId) {
+            if ($this->config->get("ChatInTeam") == true) {
+                if ($message[0] != "!" and $message[0] != "！") {
+                    $this->sendMessageInTeam($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　", $team);
                     $this->getLogger()->info($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　");
-                }else{
+                } else {
                     $message = substr($message, 1);
                     $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
                 }
-            }else{
-                if ($message[0] == "!" or $message[0] == "！"){
+            } else {
+                if ($message[0] == "!" or $message[0] == "！") {
                     $message = substr($message, 1);
-                    $this->sendMessageInTeam($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　",$team);
+                    $this->sendMessageInTeam($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　", $team);
                     $this->getLogger()->info($this->getTeamColor($teamId) . "[team]$playerName §r>> §l" . $message . "　");
-                }else{
+                } else {
                     $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
                 }
             }
-        }else{
+        } else {
             $this->getServer()->broadcastMessage("§6[chat]§r$playerName >> §l" . $message . "　");
         }
     }
@@ -1056,25 +1130,31 @@ class Main extends PluginBase implements Listener
 
     public function onTickedSecond()
     {
-        if ($this->isPlaying(1)){
+        if ($this->isPlaying(1)) {
             $this->getLogger()->info($this->gameRemainingSeconds);
-            $this->sendBossBar();
+            if (self::DO_SEND_BOSSBAR == true) {
+                $this->sendBossBar();
+            }
             $this->gameRemainingSeconds--;
         }
     }
 
     public function sendBossBar()
     {
-        if ($this->eid === null) return;
-        $maxTimeLimit = $this->getConfig()->get("Interval");
-        $current = $this->gameRemainingSeconds;
-        $percentage = $current / $maxTimeLimit * 100;
-        API::setPercentage($percentage, $this->eid, $this->participatingPlayers);
+        if (self::DO_SEND_BOSSBAR == true) {
+            if ($this->eid === null) return;
+            $maxTimeLimit = $this->getConfig()->get("Interval");
+            $current = $this->gameRemainingSeconds;
+            $percentage = $current / $maxTimeLimit * 100;
+            API::setPercentage($percentage, $this->eid, $this->participatingPlayers);
 
-        $minutes = floor(($current / 60) % 60);
-        $seconds = $current % 60;
-        $hms = sprintf("%02d:%02d", $minutes, $seconds);
-        API::setTitle("§l残り時間\n\n§l§6[" . $hms . "]", $this->eid, $this->participatingPlayers);
+            $minutes = floor(($current / 60) % 60);
+            $seconds = $current % 60;
+            $hms = sprintf("%02d:%02d", $minutes, $seconds);
+            API::setTitle("§l残り時間\n\n§l§6[" . $hms . "]", $this->eid, $this->participatingPlayers);
+        } else {
+            return;
+        }
     }
 
     //From API//////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1238,5 +1318,23 @@ class Main extends PluginBase implements Listener
                 return "9205843";
                 break;
         }
+    }
+
+    /**
+     * @return array
+     */
+    public function getJsonCommands()
+    {
+        // TODO: Implement getJsonCommands() method.
+    }
+
+    public function setJsonCommands($commands)
+    {
+        // TODO: Implement setJsonCommands() method.
+    }
+
+    public function generateJsonCommands($pluginCmds)
+    {
+        // TODO: Implement generateJsonCommands() method.
     }
 }

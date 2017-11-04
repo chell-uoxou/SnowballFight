@@ -12,7 +12,7 @@ class SendTask extends PluginTask{
 		$this->plugin = $owner;
 	}
 
-	public function onRun($currentTick){
+	public function onRun(int $currentTick){
 		$this->getOwner()->sendBossBar();
 	}
 
